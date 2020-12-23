@@ -94,10 +94,8 @@ class Cache:
 
 
 K = 1
-MAIN_SIZE = 2
 FRONT_SIZE = 1
 
-MAIN_CACHE = Cache(MAIN_SIZE, K, LFU)
 FRONT_CACHE = Cache(FRONT_SIZE, K, FIFO)
 GLOBAL_COUNTER = dict()
 COUNTER = 0
@@ -107,37 +105,12 @@ def process_key(key, counter):
     #     return None
     GLOBAL_COUNTER[key] = GLOBAL_COUNTER.get(key, 0) + 1
     in_front_cache = FRONT_CACHE.is_key_in_cache(key)
-    in_main_cache = MAIN_CACHE.is_key_in_cache(key)
     if in_front_cache:
         FRONT_CACHE.update_element_lfu_counter(key)
         FRONT_CACHE.update_element_lru_counter(key, counter)
         return (1, 0, 0)
-    if in_main_cache:
-        MAIN_CACHE.update_element_lfu_counter(key)
-        MAIN_CACHE.update_element_lru_counter(key, counter)
-        return (0, 1, 0)
     victim = FRONT_CACHE.insert_to_cache(key, Element(key, 1, counter))
-    if not victim:
-        return (0, 0, 1)
-    else:
-        if not MAIN_CACHE.is_cache_full(victim.key):
-            MAIN_CACHE.insert_to_cache(victim.key, victim)
-            return (0, 0, 1)
-        else:
-            insert = True
-            if MAIN_CACHE.policy == LFU:
-                potential_victim = MAIN_CACHE.get_element(victim.key, MAIN_CACHE.get_element_position_with_minimum_lfu_counter(victim.key))
-                insert = potential_victim.lfu_counter < victim.lfu_counter
-            elif MAIN_CACHE.policy == LRU:
-                potential_victim = MAIN_CACHE.get_element(victim.key, MAIN_CACHE.get_element_position_with_minimum_lfu_counter(victim.key))
-                insert = potential_victim.lru_counter < victim.lru_counter
-            else:
-                potential_victim = MAIN_CACHE.get_element(victim.key)
-            if potential_victim and insert and GLOBAL_COUNTER[potential_victim.key] <= GLOBAL_COUNTER[victim.key]:
-                MAIN_CACHE.insert_to_cache(victim.key, victim)
-                return (0, 0, 1)
-            else:
-                return (0, 0, 1)
+    return (0, 0, 1)
 
 
 if __name__ == "__main__":

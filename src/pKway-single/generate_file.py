@@ -5,7 +5,6 @@ P4_TEMPLATE = Template('''
 #include <v1model.p4>
 
 #define MAX_ENTRIES {{max_entries_size}}
-#define MAIN_CACHE_SIZE {{main_cache_size}}
 #define FRONT_CACHE_SIZE {{front_cache_size}}
 #define ELEMENT_SIZE {{counter_size + counter_size + key_size}}
 #define KEY_SIZE {{key_size}}
@@ -86,27 +85,22 @@ control MyIngress(inout headers hdr,
     register<bit<{{counter_size}}>>(1) r_timestamp;
 
     // Elements cache
-    register<bit<(ELEMENT_SIZE * MAIN_CACHE_SIZE)>>(MAX_ENTRIES) r_main_cache;  // MAX_ENTRIES Elements. Each element is 32 bit.
     register<bit<(ELEMENT_SIZE * FRONT_CACHE_SIZE)>>(MAX_ENTRIES) r_front_cache;
 
     // Victim element. Common for the two caches.
     register<bit<ELEMENT_SIZE>>(MAX_ENTRIES) r_victim_element;
 
     // Keys cache
-    register<bit<(KEY_SIZE * MAIN_CACHE_SIZE)>>(MAX_ENTRIES) r_main_keys;
     register<bit<(KEY_SIZE * FRONT_CACHE_SIZE)>>(MAX_ENTRIES) r_front_keys;
     
     // Victim Key. Common for thw two cached
     register<bit<KEY_SIZE>>(MAX_ENTRIES) r_victim_key; 
     
     // Masks to check whether or not the requested key is in the cache
-    bit<(KEY_SIZE * MAIN_CACHE_SIZE)> main_keys_mask;
     bit<(KEY_SIZE * FRONT_CACHE_SIZE)> front_keys_mask;
     
     // Bit that represent the keys in the cache
     bit<(KEY_SIZE * FRONT_CACHE_SIZE)> front_keys_bit;
-    bit<(KEY_SIZE * MAIN_CACHE_SIZE)> main_keys_bit;
-
     
     action send_back() {
        bit<48> tmp;
@@ -127,26 +121,6 @@ control MyIngress(inout headers hdr,
         {{insert_key_to_front}}
         keys = {{build_front_keys_element}};
         r_front_keys.write(h, keys);
-    }
-
-    action insert_key_to_main_keys_register(in bit<32> h, in bit<32> index, in bit<KEY_SIZE> key_to_insert, out bit<KEY_SIZE> new_victim_key) {
-        new_victim_key = 0;
-        bit<(KEY_SIZE * MAIN_CACHE_SIZE)> keys;
-        r_main_keys.read(keys, h);
-        {{insert_key_to_main}}
-        keys = {{build_main_keys_element}};
-        r_main_keys.write(h, keys);
-    }
-
-    action get_element_from_main_cache(in bit<32> h, in bit<32> index, in bit<32> timestamp) {
-        bit<KEY_SIZE> requested_key = hdr.p4kway.k;
-        bit<(ELEMENT_SIZE * MAIN_CACHE_SIZE)> main_element;
-
-        r_main_cache.read(main_element, h);
-        {{get_element_from_main_cache}}
-
-        main_element = {{build_main_element}};
-        r_main_cache.write(h, main_element);
     }
 
     action get_element_from_front_cache(in bit<32> h, in bit<32> index, in bit<32> timestamp) {
@@ -176,17 +150,6 @@ control MyIngress(inout headers hdr,
         element[{{counter_size - 1}}:0] = c; //LFU
     }
 
-    action insert_to_main_cache_first_element(in bit<32> h, in bit<32> index, inout bit<ELEMENT_SIZE> element, in bit<32> timestamp) {
-        bit<KEY_SIZE> requested_key = hdr.p4kway.k;
-
-        insert_to_cache_inner(index, requested_key, 1, timestamp, element);
-
-        // Insert the key to the keys_register
-        bit<KEY_SIZE> next_victim;
-        insert_key_to_main_keys_register(h, index, hdr.p4kway.k, next_victim);
-        r_victim_key.write(0, next_victim);
-    }
-
     action insert_to_front_cache_first_element(in bit<32> h, in bit<32> index, inout bit<ELEMENT_SIZE> element, in bit<32> timestamp) {
         bit<KEY_SIZE> requested_key = hdr.p4kway.k;
 
@@ -196,21 +159,6 @@ control MyIngress(inout headers hdr,
         bit<KEY_SIZE> next_victim;
         insert_key_to_front_keys_register(h, index, hdr.p4kway.k, next_victim);
         r_victim_key.write(0, next_victim);
-    }
-
-    action insert_to_main_cache(in bit<32> h, in bit<32> index, inout bit<ELEMENT_SIZE> element, in bit<32> timestamp) {
-        bit<ELEMENT_SIZE> current_victim;
-        r_victim_element.read(current_victim, 0);
-        
-        insert_to_cache_inner(index, current_victim[{{2*counter_size + key_size - 1}}:{{2*counter_size}}], current_victim[{{counter_size - 1}}:0], timestamp, element);
-
-        // Insert the key to the keys_register
-        bit<KEY_SIZE> current_victim_key;
-        r_victim_key.read(current_victim_key, 0);
-
-        bit<KEY_SIZE> next_victim_key;
-        insert_key_to_main_keys_register(h, index, current_victim_key, next_victim_key);
-        r_victim_key.write(0, next_victim_key);
     }
 
     action insert_to_front_cache(in bit<32> h, in bit<32> index, inout bit<ELEMENT_SIZE> element, in bit<32> timestamp) {
@@ -232,16 +180,8 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
-    action mark_main_hit() {
-	    hdr.p4kway.cache = 1;
-    }
-
     action mark_front_hit() {
 	    hdr.p4kway.front = 1;
-    }
-
-    action mark_main_miss() {
-	    hdr.p4kway.cache = 0;
     }
 
     action mark_front_miss() {
@@ -250,20 +190,6 @@ control MyIngress(inout headers hdr,
 
     action skip() { 
         // Do nothing
-    }
-
-    table check_main_cache {
-        key = {
-	        main_keys_mask: ternary;
-        }
-        actions = {
-		    mark_main_hit;
-		    mark_main_miss;
-        }
-        const default_action = mark_main_miss();
-        const entries = {
-	        {{tcam_main_cache}}
-        }
     }
 
     table check_front_cache {
@@ -283,16 +209,6 @@ control MyIngress(inout headers hdr,
     table noop_front {
         key = {
 	        front_keys_bit: exact;
-        }
-        actions = {
-		    skip;
-        }
-        const default_action = skip();
-    }
-
-    table noop_main {
-        key = {
-	        main_keys_bit: exact;
         }
         actions = {
 		    skip;
@@ -328,22 +244,14 @@ control MyIngress(inout headers hdr,
 
             bit<32> h = (bit<32>)hdr.p4kway.k % MAX_ENTRIES;
             r_front_keys.read(front_keys_bit, h);
-            r_main_keys.read(main_keys_bit, h);
             front_keys_mask = ({{front_keys_mask}}) ^ front_keys_bit;
-            main_keys_mask = ({{main_keys_mask}}) ^ main_keys_bit;
 
-            check_main_cache.apply();
             check_front_cache.apply();
-            noop_main.apply();
             noop_front.apply();
             noop_key.apply();
 
             
-            if (hdr.p4kway.cache == 1) {
-                // Retrieve from main cache
-                {{retrieve_from_main_cache}}
-
-            } else if (hdr.p4kway.front == 1) {
+            if (hdr.p4kway.front == 1) {
                 // Retrieve from front cache
                 {{retrieve_from_front_cache}}
 
@@ -365,37 +273,6 @@ control MyIngress(inout headers hdr,
                 r_front_cache.write(h, front_element);
 
                 r_victim_key.read(victim_key, 0);
-                if (victim_key != 0) {
-                    bit<(ELEMENT_SIZE * MAIN_CACHE_SIZE)> main_element;
-                    r_main_cache.read(main_element, h);   
-                    bit<ELEMENT_SIZE> main_element0 = main_element[{{(2*counter_size+key_size)-1}}:0];
-                    r_victim_element.read(current_victim, 0);
-                    //if (main_element0[{{counter_size-1}}:0] > 0) {
-                    //   main_element0[{{counter_size-1}}:0] = main_element0[{{counter_size-1}}:0] - 1;
-                    //}
-                    insert_to_main_cache(h, 0, main_element0, current_timestamp); 
-                    {{main_actions}}
-
-                    // Check our filter mechanism - whether the victim from the main cache should really be evicted
-                    // or the key from the front cache shouldn't be moved to the main cache at all 
-                    r_victim_key.read(victim_key, 0);
-                    r_main_keys.read(main_keys_bit, h);
-                    if (victim_key != 0) {
-                        bit<COUNTER_SIZE> first_counter;
-                        r_counter.read(first_counter, (bit<32>)current_victim[{{2*counter_size + key_size - 1}}:{{2*counter_size}}]);
-                        bit<COUNTER_SIZE> second_counter;
-                        r_counter.read(second_counter, (bit<32>)main_element0[{{2*counter_size + key_size - 1}}:{{2*counter_size}}]);
-                        if (second_counter < first_counter) {
-                            // Our insertion was incorrect
-                            main_element0 = current_victim;
-                            main_keys_bit[{{key_size - 1}}:0] = current_victim[{{2*counter_size + key_size - 1}}:{{2*counter_size}}];
-                        }
-                    }
-                    r_main_keys.write(h, main_keys_bit);
-
-                    main_element = {{build_main_element}};
-                    r_main_cache.write(h, main_element);
-                }    
             }
             send_back();
         } else {
@@ -583,5 +460,5 @@ if __name__ == "__main__":
 
     # print(p4_generated_file)
 
-    with open('/home/dor/dev/PKache/src/pKway-tcam-multi/cahceway.p4', 'w') as f:
+    with open('./cahceway.p4', 'w') as f:
         f.write(p4_generated_file)
