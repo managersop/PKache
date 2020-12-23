@@ -1,0 +1,370 @@
+/* -*- P4_16 -*- */
+
+/*
+ * P4 Decision Tree
+ */
+
+#include <core.p4>
+#include <v1model.p4>
+
+/* CONSTANTS */
+#define MAX_ENTRIES 16
+#define MAX_KEYS 4
+
+/*
+ * Define the headers the program will recognize
+ */
+
+/*
+ * Standard Ethernet header 
+ */
+header ethernet_t {
+    bit<48> dstAddr;
+    bit<48> srcAddr;
+    bit<16> etherType;
+}
+
+/*
+ * This is a custom protocol header for the Decision Tree classifier. We'll use 
+ * etherType 0x1234 for it (see parser)
+ */
+const bit<16> P4KWAY_ETYPE = 0x1234;
+const bit<8>  P4KWAY_P     = 0x50;   // 'P'
+const bit<8>  P4KWAY_4     = 0x34;   // '4'
+const bit<8>  P4KWAY_VER   = 0x01;   // v0.1
+const bit<8>  P4GET_VAL_LFU  = 0x46;   // 'F'
+const bit<8>  P4GET_VAL_LRU  = 0x52;   // 'R'
+
+header p4kway_t {
+   bit<8>  p;
+   bit<8>  four;
+   bit<8>  ver;
+   bit<8>  type;
+   bit<8> k;
+   bit<16> v;
+   bit<8> cache;
+}
+
+/*
+ * All headers, used in the program needs to be assembled into a single struct.
+ * We only need to declare the type, but there is no need to instantiate it,
+ * because it is done "by the architecture", i.e. outside of P4 functions
+ */
+struct headers {
+    ethernet_t   ethernet;
+    p4kway_t     p4kway;
+}
+
+
+/*
+ * All metadata, globally used in the program, also  needs to be assembled 
+ * into a single struct. As in the case of the headers, we only need to 
+ * declare the type, but there is no need to instantiate it,
+ * because it is done "by the architecture", i.e. outside of P4 functions
+ */
+ 
+struct metadata {
+    /* In our case it is empty */
+}
+
+const bit<32> keys = 0x05040701;
+
+
+/*************************************************************************
+ ***********************  P A R S E R  ***********************************
+ *************************************************************************/
+parser MyParser(packet_in packet,
+                out headers hdr,
+                inout metadata meta,
+                inout standard_metadata_t standard_metadata) {    
+    state start {
+        packet.extract(hdr.ethernet);
+        transition select(hdr.ethernet.etherType) {
+            P4KWAY_ETYPE : check_p4kway;
+            default      : accept;
+        }
+    }
+    
+    state check_p4kway{
+        transition select(packet.lookahead<p4kway_t>().p,
+        packet.lookahead<p4kway_t>().four,
+        packet.lookahead<p4kway_t>().ver) {
+            (P4KWAY_P, P4KWAY_4, P4KWAY_VER) : parse_p4kway;
+            default                          : accept;
+        }
+    }
+    
+    state parse_p4kway {
+        packet.extract(hdr.p4kway);
+        transition accept;
+    }
+}
+
+/*************************************************************************
+ ************   C H E C K S U M    V E R I F I C A T I O N   *************
+ *************************************************************************/
+control MyVerifyChecksum(inout headers hdr,
+                         inout metadata meta) {
+    apply { }
+}
+
+bit<16> load(in bit<8> k) {
+    return (bit<16>)(k * k);
+}
+
+bit<8> max(in bit<8> scn1, in bit<8> scn2) {
+    if (scn1 >= scn2){
+        return scn1;
+    }
+    else{
+        return scn2;
+    }
+}
+
+
+
+
+/*************************************************************************
+ **************  I N G R E S S   P R O C E S S I N G   *******************
+ *************************************************************************/
+control MyIngress(inout headers hdr,
+                  inout metadata meta,
+                  inout standard_metadata_t standard_metadata) {
+    //register<bit<64>>(MAX_ENTRIES) r_cache;
+    bit<32> keys2;
+    register<bit<8>>(1) victim;
+    bit<32> ffff;
+    bit<32> kkkk;
+    register<bit<8>>(MAX_KEYS) r_keys;
+
+
+    action send_back() {
+       bit<48> tmp;
+
+        /* Swap the MAC addresses */
+        tmp = hdr.ethernet.dstAddr;
+        hdr.ethernet.dstAddr = hdr.ethernet.srcAddr;
+        hdr.ethernet.srcAddr = tmp;
+
+        /* Send the packet back to the port it came from */
+        standard_metadata.egress_spec = standard_metadata.ingress_port;
+    }
+
+    action insert(in bit<32> index, in bit<8> k, out bit<8> vi) {
+	    bit<8> val_index;
+	    r_keys.read(val_index, index);
+        r_keys.write(index, k);
+        vi = val_index;
+    }
+
+    /*action insert_0(in bit<32> index, in bit<8> k, out bit<8> vi) {
+        bit<8> val_index;
+        r_keys.read(val_index, index);
+        r_keys.write(index, k);
+        vi =  val_index;
+    }
+
+    action insert_2(in bit<32> index, in bit<8> k, out bit<8> vi) {
+        bit<8> val_index;
+        r_keys.read(val_index, index);
+        r_keys.write(index, k);
+        vi =  val_index;
+    }*/
+
+    action keysbit(out bit<32> st) {
+        bit<8> i0;
+        bit<8> i1;
+        bit<8> i2;
+        bit<8> i3;
+        r_keys.read(i0, 0);
+        r_keys.read(i1, 1);
+        r_keys.read(i2, 2);
+        r_keys.read(i3, 3);
+        st =  (i0 ++ i1 ++ i2 ++ i3);
+    }
+     
+    action operation_drop() {
+        mark_to_drop(standard_metadata);
+    }
+
+    action hovav() {
+	hdr.p4kway.cache = 1;
+    }
+
+    action xxxx() {
+	    hdr.p4kway.v = 6;
+    }
+
+    action skip() {
+    }
+
+
+    action start(bit<32> index) {
+	    hdr.p4kway.cache = 0;
+        bit<8> ddd;
+        insert(index, hdr.p4kway.k, ddd);
+        victim.write(0,ddd);
+    }
+
+    action middle(bit<32> index) {
+        bit<8> vi;
+        victim.read(vi, 0);
+        bit<8> ddd;
+        insert(index, vi, ddd);
+        victim.write(0, ddd);
+    }
+
+    action end(bit<32> index) {
+        bit<8> vi;
+        bit<8> ddd;
+        victim.read(vi, 0);
+        insert(index, vi, ddd);
+    }
+
+    table check_tcam {
+        key = {
+            //(hdr.p4kway.k ++ hdr.p4kway.k ++ hdr.p4kway.k ++ hdr.p4kway.k)^keysbit()         : ternary @name("sss");
+	        ffff: ternary;
+        }
+        actions = {
+		    hovav;
+		    xxxx;
+        }
+        const default_action = xxxx();
+        const entries = {
+	        32w0x00FFFFFF &&& 32w0xFF000000: hovav();
+	        32w0xFF00FFFF &&& 32w0x00FF0000: hovav();
+	        32w0xFFFF00FF &&& 32w0x0000FF00: hovav();
+	        32w0xFFFFFF00 &&& 32w0x000000FF: hovav();
+        }
+    }
+
+    table stage_0 {
+        key = {
+            hdr.p4kway.v         : exact;
+        }
+        actions = {
+		    start;
+		    skip;
+        }
+        const default_action = skip();
+        const entries = {
+	        6: start(0);
+        }
+    }
+
+    table stage_1 {
+        key = {
+            hdr.p4kway.v         : exact;
+        }
+        actions = {
+		    middle;
+		    skip;
+        }
+        const default_action = skip();
+        const entries = {
+	        6: middle(1);
+        }
+    }
+
+    table stage_2 {
+        key = {
+            hdr.p4kway.v         : exact;
+        }
+        actions = {
+		    middle;
+		    skip;
+        }
+        const default_action = skip();
+        const entries = {
+	        6: middle(2);
+        }
+    }
+
+    table stage_3 {
+        key = {
+            hdr.p4kway.v         : exact;
+        }
+        actions = {
+		    end;
+		    skip;
+        }
+        const default_action = skip();
+        const entries = {
+	        6: end(3);
+        }
+    }
+
+
+    table noop {
+        key = {
+            kkkk         : exact;
+        }
+        actions = {
+		    skip;
+        }
+        const default_action = skip();
+    }
+
+    apply {
+        if (hdr.p4kway.isValid()) {
+            keysbit(kkkk);
+            ffff = (hdr.p4kway.k ++ hdr.p4kway.k ++ hdr.p4kway.k ++ hdr.p4kway.k)^kkkk;
+            noop.apply();
+            check_tcam.apply();
+	        stage_0.apply();
+            stage_1.apply();
+	        stage_2.apply();
+	        stage_3.apply();
+            send_back();
+        } else {
+            operation_drop();
+        }
+    }
+}
+
+/************************************************************
+ ****************  REGISTER DEFINITIONS   *******************
+ ************************************************************/
+
+
+
+/*************************************************************************
+ ****************  E G R E S S   P R O C E S S I N G   *******************
+ *************************************************************************/
+control MyEgress(inout headers hdr,
+                 inout metadata meta,
+                 inout standard_metadata_t standard_metadata) {
+    apply { }
+}
+
+/*************************************************************************
+ *************   C H E C K S U M    C O M P U T A T I O N   **************
+ *************************************************************************/
+
+control MyComputeChecksum(inout headers hdr, inout metadata meta) {
+    apply { }
+}
+
+/*************************************************************************
+ ***********************  D E P A R S E R  *******************************
+ *************************************************************************/
+control MyDeparser(packet_out packet, in headers hdr) {
+    apply {
+        packet.emit(hdr.ethernet);
+        packet.emit(hdr.p4kway);
+    }
+}
+
+/*************************************************************************
+ ***********************  S W I T T C H **********************************
+ *************************************************************************/
+
+V1Switch(
+MyParser(),
+MyVerifyChecksum(),
+MyIngress(),
+MyEgress(),
+MyComputeChecksum(),
+MyDeparser()
+) main;
