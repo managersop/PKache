@@ -63,9 +63,9 @@ class Cache:
 
     def insert_to_cache(self, key, elem):
         if not self.is_cache_full(key):
-            for i in range(len(self.elements[key % self.k]) - 1): # Decrement LFU counter
-                if self.elements[key % self.k][i].lfu_counter > 0:
-                    self.elements[key % self.k][i].lfu_counter -= 1
+            # for i in range(len(self.elements[key % self.k]) - 1): # Decrement LFU counter
+            #     if self.elements[key % self.k][i].lfu_counter > 0:
+            #         self.elements[key % self.k][i].lfu_counter -= 1
             if self.policy == LFU or self.policy == LRU:
                 self.elements[key % self.k].append(elem)
             elif self.policy == FIFO:
@@ -87,15 +87,15 @@ class Cache:
                     else:
                         victim = self.elements[key % self.k][i]
                         self.elements[key % self.k][i] = elem
-                else:
-                    if self.elements[key % self.k][i].lfu_counter > 0:
-                        self.elements[key % self.k][i].lfu_counter -= 1
+                # else:
+                #     if self.elements[key % self.k][i].lfu_counter > 0:
+                #         self.elements[key % self.k][i].lfu_counter -= 1
             return victim
 
 
-K = 1
-MAIN_SIZE = 2
-FRONT_SIZE = 1
+K = 16
+MAIN_SIZE = 16
+FRONT_SIZE = 4
 
 MAIN_CACHE = Cache(MAIN_SIZE, K, LFU)
 FRONT_CACHE = Cache(FRONT_SIZE, K, FIFO)
@@ -141,16 +141,15 @@ def process_key(key, counter):
 
 
 if __name__ == "__main__":
-    # with open('/home/dor/dev/PKache/src/pKway-tcam-multi/OLTP.lis', 'r') as f:
-    #     data = list(filter(lambda x: x < 65530, map(lambda x: int(x.split(' ')[0]), f.readlines())))
-    # with open('/home/dor/dev/PKache/src/pKway-tcam-multi/OLTP.lis', 'r') as f:
+    # with open('/home/dor/dev/Thesis/src/traces/OLTP.lis', 'r') as f:
     #     data = list(map(lambda x: int(x.split(' ')[0]), f.readlines()))
-    # with open('/home/dor/dev/PKache/src/pKway-tcam-multi/WebSearch1.spc', 'r') as f:
-    #     data = list(map(lambda x: int(x.split(',')[1]), f.readlines()))
-    with open('/home/dor/dev/PKache/src/pKway-tcam-multi/query.txt', 'r') as f:
+    # with open('/home/dor/dev/Thesis/src/traces/query0.99.txt', 'r') as f:
+    #     data = list(map(lambda x: int(x), f.readlines()))
+    # with open('/home/dor/dev/Thesis/src/traces/wiki.1192951682.txt', 'rb') as f:
+    #     data = list(map(lambda x: int(x), f.readlines()))
+    with open('/home/dor/dev/Thesis/src/traces/ws1.txt', 'rb') as f:
         data = list(map(lambda x: int(x), f.readlines()))
     
-    data = (1,1,2,3,3,3,4,1)
     print(len(data))
     hit_front = 0
     hit_main = 0
@@ -164,7 +163,7 @@ if __name__ == "__main__":
             hit_front += ret[0]
             hit_main += ret[1]
             hit_miss += ret[2]
-            print(int(x), int(x)%16, ret)
+            # print(int(x), int(x)%16, ret)
         i += 1
 
         if (i > 0 and i % 100 == 0):
@@ -173,8 +172,8 @@ if __name__ == "__main__":
             print('Hit main ', hit_main)
             print('Hit miss ', hit_miss)
             print((hit_front + hit_main) / i)
-        if i == 1000:
-            break
+        # if i == 1000:
+            # break
 
 
     print('Hit front ', hit_front)

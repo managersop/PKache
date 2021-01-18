@@ -384,9 +384,9 @@ BUILD_KEY_TEMPLATE = Template('''key{{i}}''')
 
 
 if __name__ == "__main__":
-    max_entries_size = 1
+    max_entries_size = 16
     main_cache_size = 2
-    front_cache_size = 1
+    front_cache_size = 32
     key_size = 16
     counter_size = 32
     

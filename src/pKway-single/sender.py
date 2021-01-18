@@ -37,24 +37,23 @@ LRU = 'R'
 def main():
     s = ''
     iface = 'eth0'
-    t1 = FIFO
+    t1 = LFU
     t2 = LRU
     # with open('OLTP.lis', 'r') as f:
     #     data = list(filter(lambda x: x < 65530, map (lambda x: int(x.split(' ')[0]), f.readlines())))
     # with open('WebSearch1.spc', 'r') as f:
     #     data = list(map (lambda x: int(x.split(',')[1]), f.readlines()))
-    # with open('OLTP.lis', 'r') as f:
-    #     data = list(map (lambda x: int(x.split(' ')[0]), f.readlines()))
-    with open('query.txt', 'r') as f:
-        data = list(map (lambda x: int(x), f.readlines()))
-    data = (1,1,2,3,3,3,4,1)
+    with open('OLTP.lis', 'r') as f:
+        data = list(map (lambda x: int(x.split(' ')[0]), f.readlines()))
+    # with open('query.txt', 'r') as f:
+    #     data = list(map (lambda x: int(x), f.readlines()))
     print len(data)
     hit_front = 0
     hit_main = 0
     hit_miss = 0
     i = 0
 
-    for x in data:
+    for x in data[:10000]:
         pkt = Ether(dst='00:04:00:00:00:00', type=0x1234) / P4kway(front_type=t1, main_type=t2, k=int(x))
         pkt = pkt/' '
 
@@ -72,13 +71,13 @@ def main():
             if p4kway:
                 if p4kway.cache == 1:
                     hit_main += 1
-                    print int(x), int(x)%16, (0, 1, 0)
+                    #print int(x), int(x)%16, (0, 1, 0)
                 elif p4kway.front == 1:
                     hit_front += 1
-                    print int(x), int(x)%16, (1, 0, 0)
+                    #print int(x), int(x)%16, (1, 0, 0)
                 else:
                     hit_miss += 1
-                    print int(x), int(x)%16, (0, 0, 1)
+                    #print int(x), int(x)%16, (0, 0, 1)
 
                 if (i > 0  and i % 100 == 0):
                     print i
@@ -86,10 +85,6 @@ def main():
                     print 'Hit main ', hit_main
                     print 'Hit miss ', hit_miss 
                     print(float(hit_front + hit_main) / float((hit_front+hit_main+hit_miss)))
-
-                if (i == 1000):
-                    break;
-
 
 
 
